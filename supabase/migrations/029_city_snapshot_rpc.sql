@@ -4,6 +4,7 @@ CREATE OR REPLACE FUNCTION get_city_snapshot()
 RETURNS json
 LANGUAGE sql
 STABLE
+SET statement_timeout = '60s'
 AS $$
   SELECT json_build_object(
     'developers', (
