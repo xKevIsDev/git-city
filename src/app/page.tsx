@@ -369,6 +369,9 @@ function HomeContent() {
   const [username, setUsername] = useState("");
   const failedUsernamesRef = useRef<Map<string, string>>(new Map()); // username -> error code
   const [buildings, setBuildings] = useState<CityBuilding[]>([]);
+  // Keep raw dev records so we can inject new devs and regenerate layout locally
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawDevsRef = useRef<any[]>([]);
   const [plazas, setPlazas] = useState<CityPlaza[]>([]);
   const [decorations, setDecorations] = useState<CityDecoration[]>([]);
   const [river, setRiver] = useState<CityRiver | null>(null);
@@ -1039,6 +1042,7 @@ function HomeContent() {
 
     if (allDevs.length === 0) return null;
 
+    rawDevsRef.current = allDevs;
     setStats(cityStats);
     const layout = generateCityLayout(allDevs);
     setBuildings(layout.buildings);
@@ -1163,6 +1167,7 @@ function HomeContent() {
         setLoadProgress(45);
         await new Promise((r) => setTimeout(r, 0)); // yield to browser
 
+        rawDevsRef.current = allDevs;
         setStats(cityStats);
         const finalLayout = generateCityLayout(allDevs);
         setBuildings(finalLayout.buildings);
@@ -1417,10 +1422,36 @@ function HomeContent() {
 
       setFeedback(null);
 
-      // Only reload city if the dev is new — skip the full reload when they already exist
+      // If dev is new, inject into local raw array and regenerate layout instantly
+      // (no need to wait for the snapshot cron to include them)
       let updatedBuildings: CityBuilding[] | null = null;
       if (!existedBefore) {
-        updatedBuildings = await reloadCity(true);
+        const newDev = {
+          ...devData,
+          owned_items: [],
+          achievements: [],
+          loadout: null,
+          custom_color: null,
+          billboard_images: [],
+          active_raid_tag: null,
+          kudos_count: devData.kudos_count ?? 0,
+          visit_count: devData.visit_count ?? 0,
+          app_streak: devData.app_streak ?? 0,
+          raid_xp: devData.raid_xp ?? 0,
+          rabbit_completed: false,
+          xp_total: devData.xp_total ?? 0,
+          xp_level: devData.xp_level ?? 1,
+        };
+        rawDevsRef.current = [...rawDevsRef.current, newDev];
+        const layout = generateCityLayout(rawDevsRef.current);
+        setBuildings(layout.buildings);
+        setPlazas(layout.plazas);
+        setDecorations(layout.decorations);
+        setRiver(layout.river);
+        setBridges(layout.bridges);
+        setDistrictZones(layout.districtZones);
+        setCityCache({ ...layout, stats: stats ?? { total_developers: 0, total_contributions: 0 } });
+        updatedBuildings = layout.buildings;
       }
 
       // Focus camera on the searched building
@@ -1477,7 +1508,7 @@ function HomeContent() {
     } finally {
       setLoading(false);
     }
-  }, [username, buildings, reloadCity]);
+  }, [username, buildings]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -3785,7 +3816,7 @@ if (claimingGift) return;
 
 
       {/* ─── Daily Missions (quest tracker, right side) ─── */}
-      {session && myBuilding?.claimed && !flyMode && !introMode && !rabbitCinematic && (
+      {session && myBuilding?.claimed && !flyMode && !introMode && !exploreMode && !rabbitCinematic && (
         <DailiesWidget
           data={dailiesData}
           accent={theme.accent}
